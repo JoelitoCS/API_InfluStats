@@ -1,0 +1,63 @@
+### Variables
+@baseUrl = http://localhost:3000/api
+
+### Test inicial
+GET http://localhost:3000/
+
+### Registro exitoso
+POST @baseUrl/auth/register
+Content-Type: application/json
+
+{
+  "email": "usuario@ejemplo.com",
+  "password": "Password123",
+  "passwordConfirm": "Password123"
+}
+
+### Registro con contraseña débil
+POST @baseUrl/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "password": "123456",
+  "passwordConfirm": "123456"
+}
+
+### Registro con email duplicado
+POST @baseUrl/auth/register
+Content-Type: application/json
+
+{
+  "email": "usuario@ejemplo.com",
+  "password": "Password456",
+  "passwordConfirm": "Password456"
+}
+
+### Registro con contraseñas no coincidentes
+POST @baseUrl/auth/register
+Content-Type: application/json
+
+{
+  "email": "otro@ejemplo.com",
+  "password": "Password123",
+  "passwordConfirm": "Diferente123"
+}
+
+### Login exitoso
+POST @baseUrl/auth/login
+Content-Type: application/json
+
+{
+  "email": "usuario@ejemplo.com",
+  "password": "Password123"
+}
+
+### Login con contraseña incorrecta
+POST @baseUrl/auth/login
+Content-Type: application/json
+
+{
+  "email": "usuario@ejemplo.com",
+  "password": "ContraseniaIncorrecta123"
+}
