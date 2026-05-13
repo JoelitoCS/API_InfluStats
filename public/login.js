@@ -1,14 +1,14 @@
-// Configuración
-const API_URL = 'http://localhost:3000/api';
+// Configuracion del cliente estatico legacy de login.
+const API_URL = 'http://localhost:3001/api';
 
-// DOM Elements
+// Referencias al DOM usadas para leer campos y mostrar feedback.
 const loginForm = document.getElementById('loginForm');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const loginBtn = document.getElementById('loginBtn');
 const alerta = document.getElementById('alerta');
 
-// Mostrar alerta
+// Muestra alertas visuales dentro del formulario.
 function mostrarAlerta(mensaje, tipo = 'info') {
     alerta.textContent = mensaje;
     alerta.className = `alert show ${tipo}`;
@@ -20,37 +20,35 @@ function mostrarAlerta(mensaje, tipo = 'info') {
     }
 }
 
-// Validar email
+// Valida un formato simple de email antes de llamar al backend.
 function validarEmail(email) {
     const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
     return emailRegex.test(email);
 }
 
-// Manejo del formulario
+// Manejo del formulario de login.
 loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const email = emailInput.value.trim();
     const password = passwordInput.value;
 
-    // Validaciones
     if (!email || !password) {
         mostrarAlerta('Por favor completa todos los campos', 'error');
         return;
     }
 
     if (!validarEmail(email)) {
-        mostrarAlerta('Por favor proporciona un email válido', 'error');
+        mostrarAlerta('Por favor proporciona un email valido', 'error');
         return;
     }
 
-    // Enviar login
     await realizarLogin(email, password);
 });
 
 async function realizarLogin(email, password) {
     loginBtn.disabled = true;
-    loginBtn.innerHTML = 'Iniciando sesión<span class="spinner"></span><span class="spinner"></span><span class="spinner"></span>';
+    loginBtn.innerHTML = 'Iniciando sesion<span class="spinner"></span><span class="spinner"></span><span class="spinner"></span>';
 
     try {
         const response = await fetch(`${API_URL}/auth/login`, {
@@ -68,29 +66,22 @@ async function realizarLogin(email, password) {
 
         if (data.success) {
             mostrarAlerta(data.message, 'success');
-            
-            // Guardar token
             localStorage.setItem('token', data.token);
             localStorage.setItem('userEmail', data.usuario.email);
 
-            // Limpiar formulario
             loginForm.reset();
 
-            // Redirigir después de 2 segundos
             setTimeout(() => {
-                alert('¡Login exitoso! Te redirigiremos a tu dashboard.');
-                // window.location.href = '/dashboard';
+                alert('Login exitoso. Te redirigiremos a tu dashboard.');
             }, 2000);
-
         } else {
-            mostrarAlerta(data.message || 'Error al iniciar sesión', 'error');
+            mostrarAlerta(data.message || 'Error al iniciar sesion', 'error');
         }
-
     } catch (error) {
         console.error('Error:', error);
-        mostrarAlerta('Error de conexión. Verifica que el servidor esté corriendo.', 'error');
+        mostrarAlerta('Error de conexion. Verifica que el servidor este corriendo.', 'error');
     } finally {
         loginBtn.disabled = false;
-        loginBtn.innerHTML = 'Iniciar Sesión';
+        loginBtn.innerHTML = 'Iniciar Sesion';
     }
 }

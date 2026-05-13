@@ -1,20 +1,35 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
+// Cliente Prisma usado por el backend Express.
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
 }
 
+// Base de datos PostgreSQL configurada mediante DATABASE_URL.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
+// Modelo adaptado a la tabla real public.users de Supabase.
 model User {
-  id        Int       @id @default(autoincrement())
-  email     String    @unique
-  password  String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email          String          @unique
+  passwordHash   String          @map("password_hash")
+  name           String?
+  socialProfiles SocialProfile[]
+  createdAt      DateTime?       @default(now()) @map("created_at")
+  lastLogin      DateTime?        @map("last_login")
+
+  @@map("users")
 }
 
+// Modelo adaptado a la tabla real public.social_profiles de Supabase.
+model SocialProfile {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?   @map("user_id") @db.Uuid
+  platform  String?
+  username  String
+  url       String
+  createdAt DateTime? @default(now()) @map("created_at")
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("social_profiles")
+}

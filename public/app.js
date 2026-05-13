@@ -1,7 +1,7 @@
-// Configuración
-const API_URL = 'http://localhost:3000/api';
+// Configuracion del cliente estatico legacy de registro.
+const API_URL = 'http://localhost:3001/api';
 
-// DOM Elements
+// Referencias al DOM usadas para leer campos y mostrar feedback.
 const registroForm = document.getElementById('registroForm');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
@@ -11,7 +11,7 @@ const alerta = document.getElementById('alerta');
 const tokenDisplay = document.getElementById('tokenDisplay');
 const tokenText = document.getElementById('tokenText');
 
-// Requisitos de contraseña
+// Requisitos de contrasena que se actualizan en tiempo real.
 const passwordRequirements = {
     length: document.getElementById('req-length'),
     uppercase: document.getElementById('req-uppercase'),
@@ -19,28 +19,17 @@ const passwordRequirements = {
     number: document.getElementById('req-number')
 };
 
-// Validaciones de contraseña en tiempo real
+// Conecta los eventos de validacion visual mientras el usuario escribe.
 passwordInput.addEventListener('input', validarRequisitosContrasena);
 passwordConfirmInput.addEventListener('input', validarCoincidencia);
 
 function validarRequisitosContrasena() {
     const password = passwordInput.value;
 
-    // Validar longitud
-    const lengthValid = password.length >= 8;
-    updateRequirement(passwordRequirements.length, lengthValid);
-
-    // Validar mayúsculas
-    const uppercaseValid = /[A-Z]/.test(password);
-    updateRequirement(passwordRequirements.uppercase, uppercaseValid);
-
-    // Validar minúsculas
-    const lowercaseValid = /[a-z]/.test(password);
-    updateRequirement(passwordRequirements.lowercase, lowercaseValid);
-
-    // Validar números
-    const numberValid = /\d/.test(password);
-    updateRequirement(passwordRequirements.number, numberValid);
+    updateRequirement(passwordRequirements.length, password.length >= 8);
+    updateRequirement(passwordRequirements.uppercase, /[A-Z]/.test(password));
+    updateRequirement(passwordRequirements.lowercase, /[a-z]/.test(password));
+    updateRequirement(passwordRequirements.number, /\d/.test(password));
 
     validarCoincidencia();
 }
@@ -56,10 +45,10 @@ function validarCoincidencia() {
     }
 
     if (password === passwordConfirm) {
-        passwordMatch.textContent = '✓ Las contraseñas coinciden';
+        passwordMatch.textContent = 'OK Las contrasenas coinciden';
         passwordMatch.style.color = '#4caf50';
     } else {
-        passwordMatch.textContent = '✗ Las contraseñas no coinciden';
+        passwordMatch.textContent = 'NO Las contrasenas no coinciden';
         passwordMatch.style.color = '#f44336';
     }
 }
@@ -74,12 +63,11 @@ function updateRequirement(element, isValid) {
     }
 }
 
-// Mostrar alerta
+// Muestra alertas visuales dentro del formulario.
 function mostrarAlerta(mensaje, tipo = 'info') {
     alerta.textContent = mensaje;
     alerta.className = `alert show ${tipo}`;
 
-    // Auto-desaparición para mensajes de info
     if (tipo === 'info') {
         setTimeout(() => {
             alerta.classList.remove('show');
@@ -87,13 +75,13 @@ function mostrarAlerta(mensaje, tipo = 'info') {
     }
 }
 
-// Validar email
+// Valida un formato simple de email antes de llamar al backend.
 function validarEmail(email) {
     const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
     return emailRegex.test(email);
 }
 
-// Manejo del formulario
+// Manejo del formulario de registro.
 registroForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -101,34 +89,32 @@ registroForm.addEventListener('submit', async (e) => {
     const password = passwordInput.value;
     const passwordConfirm = passwordConfirmInput.value;
 
-    // Validaciones
     if (!email || !password || !passwordConfirm) {
         mostrarAlerta('Por favor completa todos los campos', 'error');
         return;
     }
 
     if (!validarEmail(email)) {
-        mostrarAlerta('Por favor proporciona un email válido', 'error');
+        mostrarAlerta('Por favor proporciona un email valido', 'error');
         return;
     }
 
     if (password.length < 8) {
-        mostrarAlerta('La contraseña debe tener mínimo 8 caracteres', 'error');
+        mostrarAlerta('La contrasena debe tener minimo 8 caracteres', 'error');
         return;
     }
 
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
     if (!passwordRegex.test(password)) {
-        mostrarAlerta('La contraseña debe contener mayúsculas, minúsculas y números', 'error');
+        mostrarAlerta('La contrasena debe contener mayusculas, minusculas y numeros', 'error');
         return;
     }
 
     if (password !== passwordConfirm) {
-        mostrarAlerta('Las contraseñas no coinciden', 'error');
+        mostrarAlerta('Las contrasenas no coinciden', 'error');
         return;
     }
 
-    // Enviar registro
     await realizarRegistro(email, password, passwordConfirm);
 });
 
@@ -153,42 +139,34 @@ async function realizarRegistro(email, password, passwordConfirm) {
 
         if (data.success) {
             mostrarAlerta(data.message, 'success');
-            
-            // Guardar token
             localStorage.setItem('token', data.token);
             localStorage.setItem('userEmail', data.usuario.email);
 
-            // Mostrar token
             tokenDisplay.style.display = 'block';
             tokenText.textContent = data.token;
 
-            // Limpiar formulario
             registroForm.reset();
             validarRequisitosContrasena();
 
-            // Redirigir después de 2 segundos
             setTimeout(() => {
-                alert('¡Registro exitoso! Tu token ha sido guardado. En breve serás redirigido a tu dashboard.');
-                // window.location.href = '/dashboard';
+                alert('Registro exitoso. Tu token ha sido guardado.');
             }, 2000);
-
         } else {
             mostrarAlerta(data.message || 'Error al registrar', 'error');
         }
-
     } catch (error) {
         console.error('Error:', error);
-        mostrarAlerta('Error de conexión. Verifica que el servidor esté corriendo.', 'error');
+        mostrarAlerta('Error de conexion. Verifica que el servidor este corriendo.', 'error');
     } finally {
         registroBtn.disabled = false;
         registroBtn.innerHTML = 'Crear Cuenta';
     }
 }
 
-// Función para mostrar login (futura implementación)
+// Navega a la pagina legacy de login.
 function mostrarLogin() {
     window.location.href = '/login.html';
 }
 
-// Inicializar validación de requisitos
+// Inicializa validacion de requisitos al cargar la pagina.
 validarRequisitosContrasena();

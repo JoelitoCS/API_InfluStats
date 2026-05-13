@@ -1,69 +1,59 @@
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { prisma } from '../lib/prisma.js';
 
-const prisma = new PrismaClient();
-
-// Generar JWT
+// Firma un JWT con el id del usuario para futuras rutas protegidas.
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
         expiresIn: '30d'
     });
 };
 
-// @desc    Registrar usuario
-// @route   POST /auth/register
-// @access  Public
+// Registra un usuario nuevo validando email y reglas de contrasena.
 export const register = async (req, res) => {
     try {
         const { email, password, passwordConfirm } = req.body;
 
-        // Validaciones básicas
         if (!email || !password || !passwordConfirm) {
             return res.status(400).json({
                 success: false,
-                message: 'Por favor proporciona email y contraseña'
+                message: 'Por favor proporciona email y contrasena'
             });
         }
 
-        // Validar que las contraseñas coincidan
         if (password !== passwordConfirm) {
             return res.status(400).json({
                 success: false,
-                message: 'Las contraseñas no coinciden'
+                message: 'Las contrasenas no coinciden'
             });
         }
 
-        // Validar formato de email
         const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
         if (!emailRegex.test(email)) {
             return res.status(400).json({
                 success: false,
-                message: 'Por favor proporciona un email válido'
+                message: 'Por favor proporciona un email valido'
             });
         }
 
-        // Validar requisitos mínimos de contraseña
         if (password.length < 8) {
             return res.status(400).json({
                 success: false,
-                message: 'La contraseña debe tener mínimo 8 caracteres'
+                message: 'La contrasena debe tener minimo 8 caracteres'
             });
         }
 
-        // Validar que la contraseña tenga mayúsculas, minúsculas y números
         const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
         if (!passwordRegex.test(password)) {
             return res.status(400).json({
                 success: false,
-                message: 'La contraseña debe contener mayúsculas, minúsculas y números'
+                message: 'La contrasena debe contener mayusculas, minusculas y numeros'
             });
         }
 
-        // Convertir email a minúsculas
         const emailLowercase = email.toLowerCase();
 
-        // Verificar si el email ya existe
+        // Evita duplicados antes de intentar crear el registro.
         const userExistente = await prisma.user.findUnique({
             where: { email: emailLowercase }
         });
@@ -71,26 +61,23 @@ export const register = async (req, res) => {
         if (userExistente) {
             return res.status(400).json({
                 success: false,
-                message: 'El email ya está registrado'
+                message: 'El email ya esta registrado'
             });
         }
 
-        // Encriptar contraseña
+        // Nunca guardamos la contrasena plana, solo su hash.
         const salt = await bcrypt.genSalt(10);
         const passwordEncriptada = await bcrypt.hash(password, salt);
 
-        // Crear nuevo usuario
         const usuario = await prisma.user.create({
             data: {
                 email: emailLowercase,
-                password: passwordEncriptada
+                passwordHash: passwordEncriptada
             }
         });
 
-        // Generar token
         const token = generateToken(usuario.id);
 
-        // Respuesta exitosa
         res.status(201).json({
             success: true,
             message: 'Usuario registrado exitosamente',
@@ -101,10 +88,9 @@ export const register = async (req, res) => {
                 createdAt: usuario.createdAt
             }
         });
-
     } catch (error) {
         console.error('Error en registro:', error);
-        
+
         res.status(500).json({
             success: false,
             message: 'Error al registrar usuario',
@@ -113,45 +99,45 @@ export const register = async (req, res) => {
     }
 };
 
-// @desc    Login usuario
-// @route   POST /auth/login
-// @access  Public
+// Inicia sesion comparando la contrasena recibida con el hash guardado.
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // Validaciones
         if (!email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Por favor proporciona email y contraseña'
+                message: 'Por favor proporciona email y contrasena'
             });
         }
 
-        // Buscar usuario
         const usuario = await prisma.user.findUnique({
             where: { email: email.toLowerCase() }
         });
-        
+
         if (!usuario) {
             return res.status(401).json({
                 success: false,
-                message: 'Email o contraseña incorrectos'
+                message: 'Email o contrasena incorrectos'
             });
         }
 
-        // Verificar contraseña
-        const esValida = await bcrypt.compare(password, usuario.password);
-        
+        const esValida = await bcrypt.compare(password, usuario.passwordHash);
+
         if (!esValida) {
             return res.status(401).json({
                 success: false,
-                message: 'Email o contraseña incorrectos'
+                message: 'Email o contrasena incorrectos'
             });
         }
 
-        // Generar token
         const token = generateToken(usuario.id);
+
+        // Actualiza la fecha del ultimo acceso en la columna real last_login.
+        await prisma.user.update({
+            where: { id: usuario.id },
+            data: { lastLogin: new Date() }
+        });
 
         res.status(200).json({
             success: true,
@@ -162,12 +148,11 @@ export const login = async (req, res) => {
                 email: usuario.email
             }
         });
-
     } catch (error) {
         console.error('Error en login:', error);
         res.status(500).json({
             success: false,
-            message: 'Error al iniciar sesión',
+            message: 'Error al iniciar sesion',
             error: error.message
         });
     }
