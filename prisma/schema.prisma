@@ -44,8 +44,10 @@ model MetricsHistory {
   profileId String   @map("profile_id") @db.Uuid
   weekDate  DateTime @map("week_date") @db.Date
   // Engagement calculado automáticamente por el backend, nunca enviado por el cliente.
-  engagement Decimal @db.Decimal(5, 2)
-  createdAt DateTime? @default(now()) @map("created_at")
+  engagement Decimal   @db.Decimal(5, 2)
+  // Crecimiento % respecto a la semana anterior. NULL si es el primer registro.
+  growth     Decimal?  @db.Decimal(8, 2)
+  createdAt  DateTime? @default(now()) @map("created_at")
 
   // Relación con el perfil social (N métricas → 1 perfil).
   profile   SocialProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
