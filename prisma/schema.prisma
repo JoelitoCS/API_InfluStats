@@ -8,7 +8,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// Modelo adaptado a la tabla real public.users de Supabase.
 model User {
   id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email          String          @unique
@@ -16,53 +15,120 @@ model User {
   name           String?
   socialProfiles SocialProfile[]
   createdAt      DateTime?       @default(now()) @map("created_at")
-  lastLogin      DateTime?        @map("last_login")
+  lastLogin      DateTime?       @map("last_login")
 
   @@map("users")
 }
 
-// Modelo adaptado a la tabla real public.social_profiles de Supabase.
 model SocialProfile {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String?   @map("user_id") @db.Uuid
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?          @map("user_id") @db.Uuid
   platform  String?
   username  String
   url       String
-  createdAt DateTime? @default(now()) @map("created_at")
+  createdAt DateTime?        @default(now()) @map("created_at")
   user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  // Relación inversa: un perfil puede tener muchos registros de métricas.
   metrics   MetricsHistory[]
 
   @@map("social_profiles")
 }
 
-// Modelo que guarda las métricas semanales de un perfil social.
-// Cada fila representa una semana de datos introducida por el usuario.
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tabla base: campos comunes a todas las plataformas.
+//  Cada fila = una semana de datos para un perfil.
+//  El engagement se calcula en el backend según la plataforma y se guarda aquí.
+//  La relación con la tabla específica es 1:1 (una fila base → una fila detalle).
+// ─────────────────────────────────────────────────────────────────────────────
 model MetricsHistory {
-  // UUID autogenerado por PostgreSQL, clave primaria.
-  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId String   @map("profile_id") @db.Uuid
+  weekDate  DateTime @map("week_date") @db.Date
+  // Engagement calculado automáticamente por el backend, nunca enviado por el cliente.
+  engagement Decimal @db.Decimal(5, 2)
+  createdAt DateTime? @default(now()) @map("created_at")
 
-  // FK al perfil social al que pertenecen estas métricas.
-  // Si se borra el perfil, se borran en cascada sus métricas.
-  profileId   String        @map("profile_id") @db.Uuid
-  profile     SocialProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  // Relación con el perfil social (N métricas → 1 perfil).
+  profile   SocialProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  // Semana a la que corresponden los datos (lunes de esa semana).
-  weekDate    DateTime      @map("week_date") @db.Date
+  // Relaciones 1:1 con las tablas específicas de cada plataforma.
+  // Solo una de estas estará rellena por fila; el resto serán null.
+  youtube   MetricsYoutube?
+  tiktok    MetricsTiktok?
+  twitch    MetricsTwitch?
+  instagram MetricsInstagram?
 
-  // Número de seguidores al final de esa semana. Entero, obligatorio.
-  followers   Int
-
-  // Tasa de engagement en porcentaje (0.00 – 100.00).
-  // Decimal(5,2) permite hasta 999.99 sin error de overflow.
-  engagement  Decimal       @db.Decimal(5, 2)
-
-  // Número total de publicaciones en esa semana.
-  posts       Int
-
-  // Timestamp de inserción, se rellena automáticamente.
-  createdAt   DateTime?     @default(now()) @map("created_at")
-
-  // Nombre real de la tabla en Supabase (snake_case por convención PostgreSQL).
   @@map("metrics_history")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  YouTube: visitas, likes, suscriptores y miembros de pago.
+//  Engagement = (likes / views) * 100
+// ─────────────────────────────────────────────────────────────────────────────
+model MetricsYoutube {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // FK 1:1 a la tabla base. UNIQUE garantiza que solo hay un detalle por fila base.
+  metricsId   String         @unique @map("metrics_id") @db.Uuid
+  metrics     MetricsHistory @relation(fields: [metricsId], references: [id], onDelete: Cascade)
+
+  views       Int  // visitas totales de la semana
+  likes       Int  // likes recibidos
+  subscribers Int  // suscriptores totales al final de la semana
+  paidMembers Int  @map("paid_members")  // miembros con membresía de pago
+
+  @@map("metrics_youtube")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TikTok: visitas, likes, comentarios, favoritos, compartidos y seguidores.
+//  Engagement = ((likes + comments + favorites + shares) / views) * 100
+// ─────────────────────────────────────────────────────────────────────────────
+model MetricsTiktok {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  metricsId  String         @unique @map("metrics_id") @db.Uuid
+  metrics    MetricsHistory @relation(fields: [metricsId], references: [id], onDelete: Cascade)
+
+  views     Int  // visualizaciones totales
+  likes     Int  // likes recibidos
+  comments  Int  // comentarios recibidos
+  favorites Int  // veces marcado como favorito
+  shares    Int  // veces compartido
+  followers Int  // seguidores al final de la semana
+
+  @@map("metrics_tiktok")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Twitch: visualizaciones, seguidores, suscriptores (Prime+pago) y bits.
+//  Engagement = (subscribers_twitch / followers) * 100
+// ─────────────────────────────────────────────────────────────────────────────
+model MetricsTwitch {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  metricsId         String         @unique @map("metrics_id") @db.Uuid
+  metrics           MetricsHistory @relation(fields: [metricsId], references: [id], onDelete: Cascade)
+
+  views             Int  // visualizaciones totales del stream
+  followers         Int  // seguidores totales del canal
+  // Suscriptores Prime + pago unificados en un único campo.
+  subscribersTwitch Int  @map("subscribers_twitch")
+  bits              Int  // bits donados durante la semana
+
+  @@map("metrics_twitch")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Instagram: visualizaciones, likes, guardados, seguidores y publicaciones.
+//  Engagement = ((likes + favorites) / views) * 100
+// ─────────────────────────────────────────────────────────────────────────────
+model MetricsInstagram {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  metricsId String         @unique @map("metrics_id") @db.Uuid
+  metrics   MetricsHistory @relation(fields: [metricsId], references: [id], onDelete: Cascade)
+
+  views     Int  // visualizaciones totales
+  likes     Int  // likes recibidos
+  favorites Int  // publicaciones guardadas
+  followers Int  // seguidores al final de la semana
+  posts     Int  // publicaciones realizadas esa semana
+
+  @@map("metrics_instagram")
 }

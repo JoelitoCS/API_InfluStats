@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
+import metricsRoutes from './routes/metrics.js'; // Historial semanal de métricas
 import { prisma } from './lib/prisma.js';
 
 // Carga variables como DATABASE_URL, JWT_SECRET y PORT desde .env.
@@ -41,6 +42,9 @@ app.use('/api/profiles', profileRoutes);
 // Alias solicitado para pruebas directas en localhost:3001/profiles.
 app.use('/profiles', profileRoutes);
 
+// Rutas de métricas semanales: POST y GET /api/metrics/:profileId
+app.use('/api/metrics', metricsRoutes);
+
 // Ruta de salud/documentacion minima de la API.
 app.get('/', (req, res) => {
     res.json({
@@ -49,7 +53,9 @@ app.get('/', (req, res) => {
         endpoints: {
             register: 'POST /api/auth/register',
             login: 'POST /api/auth/login',
-            createProfile: 'POST /api/profiles'
+            createProfile: 'POST /api/profiles',
+            addMetrics:   'POST /api/metrics/:profileId',
+            getMetrics:   'GET  /api/metrics/:profileId'
         }
     });
 });
