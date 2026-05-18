@@ -29,7 +29,40 @@ model SocialProfile {
   username  String
   url       String
   createdAt DateTime? @default(now()) @map("created_at")
-  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Relación inversa: un perfil puede tener muchos registros de métricas.
+  metrics   MetricsHistory[]
 
   @@map("social_profiles")
+}
+
+// Modelo que guarda las métricas semanales de un perfil social.
+// Cada fila representa una semana de datos introducida por el usuario.
+model MetricsHistory {
+  // UUID autogenerado por PostgreSQL, clave primaria.
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  // FK al perfil social al que pertenecen estas métricas.
+  // Si se borra el perfil, se borran en cascada sus métricas.
+  profileId   String        @map("profile_id") @db.Uuid
+  profile     SocialProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  // Semana a la que corresponden los datos (lunes de esa semana).
+  weekDate    DateTime      @map("week_date") @db.Date
+
+  // Número de seguidores al final de esa semana. Entero, obligatorio.
+  followers   Int
+
+  // Tasa de engagement en porcentaje (0.00 – 100.00).
+  // Decimal(5,2) permite hasta 999.99 sin error de overflow.
+  engagement  Decimal       @db.Decimal(5, 2)
+
+  // Número total de publicaciones en esa semana.
+  posts       Int
+
+  // Timestamp de inserción, se rellena automáticamente.
+  createdAt   DateTime?     @default(now()) @map("created_at")
+
+  // Nombre real de la tabla en Supabase (snake_case por convención PostgreSQL).
+  @@map("metrics_history")
 }
