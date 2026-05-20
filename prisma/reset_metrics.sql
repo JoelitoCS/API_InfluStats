@@ -20,6 +20,8 @@ CREATE TABLE public.metrics_history (
   profile_id  UUID         NOT NULL REFERENCES public.social_profiles(id) ON DELETE CASCADE,
   week_date   DATE         NOT NULL,
   engagement  NUMERIC(5,2) NOT NULL DEFAULT 0,
+  -- Crecimiento % respecto a la semana anterior. NULL = primer registro del perfil.
+  growth      NUMERIC(8,2) DEFAULT NULL,
   created_at  TIMESTAMPTZ  DEFAULT now()
 );
 
