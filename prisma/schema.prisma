@@ -72,10 +72,11 @@ model MetricsYoutube {
   metricsId   String         @unique @map("metrics_id") @db.Uuid
   metrics     MetricsHistory @relation(fields: [metricsId], references: [id], onDelete: Cascade)
 
-  views       Int  // visitas totales de la semana
-  likes       Int  // likes recibidos
-  subscribers Int  // suscriptores totales al final de la semana
-  paidMembers Int  @map("paid_members")  // miembros con membresía de pago
+  views        Int      // visitas totales de la semana
+  likes        Int      // likes recibidos
+  subscribers  Int      // suscriptores totales al final de la semana
+  paidMembers  Int      @map("paid_members")  // miembros con membresía de pago
+  donations    Decimal  @default(0) @map("donations") @db.Decimal(10, 2)  // donaciones en €
 
   @@map("metrics_youtube")
 }

@@ -55,7 +55,8 @@ app.get('/', (req, res) => {
             login: 'POST /api/auth/login',
             createProfile: 'POST /api/profiles',
             addMetrics:   'POST /api/metrics/:profileId',
-            getMetrics:   'GET  /api/metrics/:profileId'
+            getMetrics:   'GET  /api/metrics/:profileId',
+            getSummary:   'GET  /api/metrics/summary'
         }
     });
 });
