@@ -303,20 +303,50 @@ export const getSummary = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  GET /api/metrics/compare/:profileId?period=1w
-//  Compara las métricas actuales (última semana guardada) con las de hace 1
-//  semana. Devuelve ambos conjuntos y las diferencias absolutas y porcentuales
-//  campo a campo para mostrar tarjetas comparativas en el frontend.
+//  GET /api/metrics/compare/:profileId?period=1w[&fromDate=YYYY-MM-DD]
+//
+//  Períodos predefinidos admitidos:
+//    1w  →  7 días    |  2w → 14 días
+//    1m  → 30 días    |  3m → 90 días
+//    6m  → 180 días   |  1y → 365 días
+//    custom → usa el query param `fromDate` (YYYY-MM-DD) como fecha de referencia
+//
+//  Lógica de búsqueda del registro «anterior»:
+//    Se toma el último registro guardado (current) y se busca el registro cuya
+//    weekDate sea la más cercana (≤) a (current.weekDate - N días).
+//    Esto garantiza que siempre se compara contra el dato real más próximo al
+//    período pedido, aunque no haya una entrada exacta para ese día.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Días de desplazamiento por período
+const PERIOD_DAYS = { '1w': 7, '2w': 14, '1m': 30, '3m': 90, '6m': 180, '1y': 365 };
+const VALID_PERIODS = Object.keys(PERIOD_DAYS);
+
 export const compareMetrics = async (req, res) => {
   try {
-    const { profileId } = req.params;
-    // Por ahora solo soportamos period=1w (una semana atrás). Se puede ampliar.
-    // const { period = '1w' } = req.query;  // reservado para futuros períodos
+    const { profileId }            = req.params;
+    const { period = '1w', fromDate } = req.query;
 
-    // 1. Verificar propiedad del perfil
+    // ── Validar período ──────────────────────────────────────────────────────
+    const isCustom = period === 'custom';
+    if (!VALID_PERIODS.includes(period) && !isCustom) {
+      return res.status(400).json({
+        success: false,
+        message: `Período no válido. Usa: ${VALID_PERIODS.join(', ')} o custom&fromDate=YYYY-MM-DD`,
+      });
+    }
+    if (isCustom) {
+      if (!fromDate) {
+        return res.status(400).json({ success: false, message: 'custom requiere el param fromDate=YYYY-MM-DD' });
+      }
+      if (isNaN(new Date(fromDate).getTime())) {
+        return res.status(400).json({ success: false, message: 'fromDate no es una fecha válida (YYYY-MM-DD)' });
+      }
+    }
+
+    // ── Verificar propiedad del perfil ───────────────────────────────────────
     const profile = await prisma.socialProfile.findFirst({
-      where: { id: profileId, userId: req.user.id },
+      where:  { id: profileId, userId: req.user.id },
       select: { id: true, platform: true, username: true },
     });
     if (!profile) {
@@ -329,30 +359,51 @@ export const compareMetrics = async (req, res) => {
       return res.status(400).json({ success: false, message: `Plataforma "${platform}" no soportada` });
     }
 
-    // 2. Obtener los dos registros más recientes del perfil
     const includeDetail = {};
     includeDetail[platform] = true;
 
-    const lastTwo = await prisma.metricsHistory.findMany({
+    // ── Obtener el registro más reciente (current) ───────────────────────────
+    const currentRow = await prisma.metricsHistory.findFirst({
       where:   { profileId },
       orderBy: { weekDate: 'desc' },
-      take:    2,
       include: includeDetail,
     });
 
-    if (lastTwo.length === 0) {
+    if (!currentRow) {
       return res.status(404).json({
         success: false,
         message: 'No hay métricas registradas para este perfil',
       });
     }
 
-    // Aplanar un registro base + detalle de plataforma en un objeto plano
+    // ── Calcular fecha de referencia para el registro anterior ───────────────
+    const currentDate = new Date(currentRow.weekDate);
+    let referenceDate;
+
+    if (isCustom) {
+      referenceDate = new Date(fromDate);
+    } else {
+      const days    = PERIOD_DAYS[period];
+      referenceDate = new Date(currentDate);
+      referenceDate.setDate(referenceDate.getDate() - days);
+    }
+
+    // El registro anterior es el más reciente cuya weekDate <= referenceDate
+    // y que no sea el propio current (weekDate < currentDate).
+    const previousRow = await prisma.metricsHistory.findFirst({
+      where: {
+        profileId,
+        weekDate: { lte: referenceDate },
+      },
+      orderBy: { weekDate: 'desc' },
+      include: includeDetail,
+    });
+
+    // ── Aplanador: base + detalle → objeto JS plano con numbers ─────────────
     const flatten = (row) => {
       const detail = row[platform] || {};
       const { youtube, tiktok, twitch, instagram, ...base } = row;
-      // Convertir Decimal de Prisma a número JS
-      const toNum = (v) => (v !== null && v !== undefined ? parseFloat(v) : null);
+      const toNum  = (v) => (v !== null && v !== undefined ? parseFloat(v) : null);
       const result = { ...base };
       Object.keys(result).forEach((k) => {
         if (result[k] !== null && typeof result[k] === 'object' && typeof result[k].toFixed === 'function') {
@@ -362,31 +413,31 @@ export const compareMetrics = async (req, res) => {
       Object.keys(detail).forEach((k) => {
         const v = detail[k];
         result[k] = (v !== null && typeof v === 'object' && typeof v.toFixed === 'function')
-          ? toNum(v)
-          : v;
+          ? toNum(v) : v;
       });
       return result;
     };
 
-    const current = flatten(lastTwo[0]);
+    const current  = flatten(currentRow);
+    const previous = previousRow ? flatten(previousRow) : null;
 
-    // Si solo hay un registro no podemos comparar
-    if (lastTwo.length < 2) {
+    // ── Si no hay registro anterior con esa referencia ───────────────────────
+    if (!previous) {
       return res.status(200).json({
-        success:  true,
-        message:  'Solo hay un registro; no se puede comparar todavía',
+        success:       true,
+        message:       `No hay datos para el período «${period}»${isCustom ? ` (${fromDate})` : ''}`,
         platform,
-        username: profile.username,
+        username:      profile.username,
+        period,
+        referenceDate: referenceDate.toISOString().split('T')[0],
         current,
-        previous: null,
-        diff:     null,
+        previous:      null,
+        diff:          null,
+        fields:        [...config.intFields, ...(config.decimalFields || []), 'engagement', 'growth'],
       });
     }
 
-    const previous = flatten(lastTwo[1]);
-
-    // 3. Calcular diferencias campo a campo (campos numéricos de la plataforma
-    //    más engagement y growth que son campos base de MetricsHistory)
+    // ── Calcular diferencias campo a campo ───────────────────────────────────
     const numericFields = [
       ...config.intFields,
       ...(config.decimalFields || []),
@@ -413,13 +464,15 @@ export const compareMetrics = async (req, res) => {
     }
 
     return res.status(200).json({
-      success:  true,
+      success:       true,
       platform,
-      username: profile.username,
+      username:      profile.username,
+      period,
+      referenceDate: referenceDate.toISOString().split('T')[0],
       current,
       previous,
       diff,
-      fields:   numericFields,
+      fields:        numericFields,
     });
   } catch (error) {
     console.error('Error en compareMetrics:', error);

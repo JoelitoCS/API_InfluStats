@@ -145,7 +145,8 @@ export const login = async (req, res) => {
             token,
             usuario: {
                 id: usuario.id,
-                email: usuario.email
+                email: usuario.email,
+                role: usuario.role,   // frontend lo guarda en localStorage
             }
         });
     } catch (error) {

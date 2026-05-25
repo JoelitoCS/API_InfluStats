@@ -5,6 +5,7 @@ import authRoutes    from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
 import metricsRoutes from './routes/metrics.js';
 import rankingRoutes from './routes/ranking.js';
+import adminRoutes   from './routes/admin.js';
 import { prisma } from './lib/prisma.js';
 
 dotenv.config();
@@ -32,6 +33,7 @@ app.use('/api/profiles', profileRoutes);
 app.use('/profiles',    profileRoutes);
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/ranking', rankingRoutes);
+app.use('/api/admin',   adminRoutes);
 
 app.get('/', (req, res) => {
   res.json({

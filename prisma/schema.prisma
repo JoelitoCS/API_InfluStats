@@ -13,6 +13,7 @@ model User {
   email          String          @unique
   passwordHash   String          @map("password_hash")
   name           String?
+  role           String          @default("user")  // "user" | "admin"
   socialProfiles SocialProfile[]
   createdAt      DateTime?       @default(now()) @map("created_at")
   lastLogin      DateTime?       @map("last_login")

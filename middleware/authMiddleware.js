@@ -26,7 +26,7 @@ export const protect = async (req, res, next) => {
     // Esto protege frente a tokens de usuarios eliminados.
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true }, // solo lo que necesitamos en req.user
+      select: { id: true, email: true, role: true }, // role necesario para isAdmin
     });
 
     if (!user) {
