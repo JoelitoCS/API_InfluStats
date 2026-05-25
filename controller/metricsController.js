@@ -301,3 +301,128 @@ export const getSummary = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Error interno', error: error.message });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  GET /api/metrics/compare/:profileId?period=1w
+//  Compara las métricas actuales (última semana guardada) con las de hace 1
+//  semana. Devuelve ambos conjuntos y las diferencias absolutas y porcentuales
+//  campo a campo para mostrar tarjetas comparativas en el frontend.
+// ─────────────────────────────────────────────────────────────────────────────
+export const compareMetrics = async (req, res) => {
+  try {
+    const { profileId } = req.params;
+    // Por ahora solo soportamos period=1w (una semana atrás). Se puede ampliar.
+    // const { period = '1w' } = req.query;  // reservado para futuros períodos
+
+    // 1. Verificar propiedad del perfil
+    const profile = await prisma.socialProfile.findFirst({
+      where: { id: profileId, userId: req.user.id },
+      select: { id: true, platform: true, username: true },
+    });
+    if (!profile) {
+      return res.status(404).json({ success: false, message: 'Perfil no encontrado o sin permisos' });
+    }
+
+    const platform = profile.platform?.toLowerCase();
+    const config   = PLATFORM_CONFIG[platform];
+    if (!config) {
+      return res.status(400).json({ success: false, message: `Plataforma "${platform}" no soportada` });
+    }
+
+    // 2. Obtener los dos registros más recientes del perfil
+    const includeDetail = {};
+    includeDetail[platform] = true;
+
+    const lastTwo = await prisma.metricsHistory.findMany({
+      where:   { profileId },
+      orderBy: { weekDate: 'desc' },
+      take:    2,
+      include: includeDetail,
+    });
+
+    if (lastTwo.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No hay métricas registradas para este perfil',
+      });
+    }
+
+    // Aplanar un registro base + detalle de plataforma en un objeto plano
+    const flatten = (row) => {
+      const detail = row[platform] || {};
+      const { youtube, tiktok, twitch, instagram, ...base } = row;
+      // Convertir Decimal de Prisma a número JS
+      const toNum = (v) => (v !== null && v !== undefined ? parseFloat(v) : null);
+      const result = { ...base };
+      Object.keys(result).forEach((k) => {
+        if (result[k] !== null && typeof result[k] === 'object' && typeof result[k].toFixed === 'function') {
+          result[k] = toNum(result[k]);
+        }
+      });
+      Object.keys(detail).forEach((k) => {
+        const v = detail[k];
+        result[k] = (v !== null && typeof v === 'object' && typeof v.toFixed === 'function')
+          ? toNum(v)
+          : v;
+      });
+      return result;
+    };
+
+    const current = flatten(lastTwo[0]);
+
+    // Si solo hay un registro no podemos comparar
+    if (lastTwo.length < 2) {
+      return res.status(200).json({
+        success:  true,
+        message:  'Solo hay un registro; no se puede comparar todavía',
+        platform,
+        username: profile.username,
+        current,
+        previous: null,
+        diff:     null,
+      });
+    }
+
+    const previous = flatten(lastTwo[1]);
+
+    // 3. Calcular diferencias campo a campo (campos numéricos de la plataforma
+    //    más engagement y growth que son campos base de MetricsHistory)
+    const numericFields = [
+      ...config.intFields,
+      ...(config.decimalFields || []),
+      'engagement',
+      'growth',
+    ];
+
+    const diff = {};
+    for (const field of numericFields) {
+      const curr = current[field]  !== undefined ? parseFloat(current[field])  : null;
+      const prev = previous[field] !== undefined ? parseFloat(previous[field]) : null;
+
+      if (curr === null || prev === null) {
+        diff[field] = { absolute: null, percent: null };
+        continue;
+      }
+
+      const absolute = parseFloat((curr - prev).toFixed(2));
+      const percent  = prev !== 0
+        ? parseFloat(((absolute / Math.abs(prev)) * 100).toFixed(2))
+        : null;
+
+      diff[field] = { absolute, percent };
+    }
+
+    return res.status(200).json({
+      success:  true,
+      platform,
+      username: profile.username,
+      current,
+      previous,
+      diff,
+      fields:   numericFields,
+    });
+  } catch (error) {
+    console.error('Error en compareMetrics:', error);
+    return res.status(500).json({ success: false, message: 'Error interno', error: error.message });
+  }
+};
