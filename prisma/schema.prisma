@@ -22,14 +22,15 @@ model User {
 }
 
 model SocialProfile {
-  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String?          @map("user_id") @db.Uuid
-  platform  String?
-  username  String
-  url       String
-  createdAt DateTime?        @default(now()) @map("created_at")
-  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  metrics   MetricsHistory[]
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?          @map("user_id") @db.Uuid
+  platform    String?
+  username    String
+  url         String
+  needsUpdate Boolean          @default(false) @map("needs_update")
+  createdAt   DateTime?        @default(now()) @map("created_at")
+  user        User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metrics     MetricsHistory[]
 
   @@map("social_profiles")
 }

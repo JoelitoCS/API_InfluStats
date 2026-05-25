@@ -6,7 +6,8 @@ import profileRoutes from './routes/profiles.js';
 import metricsRoutes from './routes/metrics.js';
 import rankingRoutes from './routes/ranking.js';
 import adminRoutes   from './routes/admin.js';
-import { prisma } from './lib/prisma.js';
+import { prisma }    from './lib/prisma.js';
+import { startCron } from './lib/cron.js';
 
 dotenv.config();
 
@@ -62,4 +63,5 @@ process.on('SIGINT', async () => {
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  startCron();
 });

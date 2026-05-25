@@ -251,7 +251,7 @@ export const getStaleness = async (req, res) => {
     const profiles = await prisma.socialProfile.findMany({
       where: { userId: req.user.id },
       select: {
-        id: true, platform: true, username: true,
+        id: true, platform: true, username: true, needsUpdate: true,
         metrics: {
           orderBy: { weekDate: 'desc' },
           take: 1,
@@ -267,12 +267,12 @@ export const getStaleness = async (req, res) => {
           ? Math.floor((Date.now() - new Date(lastDate).getTime()) / 86_400_000)
           : null;
         return {
-          id:       p.id,
-          platform: p.platform,
-          username: p.username,
-          lastDate: lastDate ? new Date(lastDate).toISOString().split('T')[0] : null,
+          id:          p.id,
+          platform:    p.platform,
+          username:    p.username,
+          needsUpdate: p.needsUpdate,
+          lastDate:    lastDate ? new Date(lastDate).toISOString().split('T')[0] : null,
           daysAgo,
-          // stale si nunca ha tenido datos O si el último es > 7 días
           stale: lastDate === null || new Date(lastDate) < threshold,
         };
       })
