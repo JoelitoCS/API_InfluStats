@@ -1,5 +1,5 @@
 import express from 'express';
-import { createMetrics, getMetrics, getSummary, compareMetrics } from '../controller/metricsController.js';
+import { createMetrics, getMetrics, getSummary, getStaleness, compareMetrics } from '../controller/metricsController.js';
 import { protect }           from '../middleware/authMiddleware.js';
 
 // Router independiente; se montará en /api/metrics en index.js.
@@ -8,7 +8,8 @@ const router = express.Router();
 // GET /api/metrics/summary
 // Resumen global de métricas actuales del usuario (última semana de cada perfil).
 // IMPORTANTE: debe ir antes de /:profileId para que Express no lo interprete como un ID.
-router.get('/summary', protect, getSummary);
+router.get('/summary',   protect, getSummary);
+router.get('/staleness', protect, getStaleness);
 
 // GET /api/metrics/compare/:profileId?period=1w
 // Compara las métricas actuales con las de la semana anterior.

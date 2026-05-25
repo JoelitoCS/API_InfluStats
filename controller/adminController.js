@@ -11,25 +11,25 @@ const PLATFORM_CONFIG = {
   youtube: {
     intFields: ['views', 'likes', 'subscribers', 'paidMembers'], decimalFields: ['donations'],
     growthField: 'subscribers',
-    calcEngagement: ({ likes, views }) => views === 0 ? 0 : Math.min(parseFloat(((likes / views) * 100).toFixed(2)), 100),
+    calcEngagement: ({ likes, views }) => views === 0 ? 0 : Math.max(parseFloat(((likes / views) * 100).toFixed(2)), 0),
   },
   tiktok: {
     intFields: ['views', 'likes', 'comments', 'favorites', 'shares', 'followers'], decimalFields: [],
     growthField: 'followers',
     calcEngagement: ({ likes, comments, favorites, shares, views }) =>
-      views === 0 ? 0 : Math.min(parseFloat((((likes + comments + favorites + shares) / views) * 100).toFixed(2)), 100),
+      views === 0 ? 0 : Math.max(parseFloat((((likes + comments + favorites + shares) / views) * 100).toFixed(2)), 0),
   },
   twitch: {
     intFields: ['views', 'followers', 'subscribersTwitch', 'bits'], decimalFields: [],
     growthField: 'followers',
     calcEngagement: ({ subscribersTwitch, followers }) =>
-      followers === 0 ? 0 : Math.min(parseFloat(((subscribersTwitch / followers) * 100).toFixed(2)), 100),
+      followers === 0 ? 0 : Math.max(parseFloat(((subscribersTwitch / followers) * 100).toFixed(2)), 0),
   },
   instagram: {
     intFields: ['views', 'likes', 'favorites', 'followers', 'posts'], decimalFields: [],
     growthField: 'followers',
     calcEngagement: ({ likes, favorites, views }) =>
-      views === 0 ? 0 : Math.min(parseFloat((((likes + favorites) / views) * 100).toFixed(2)), 100),
+      views === 0 ? 0 : Math.max(parseFloat((((likes + favorites) / views) * 100).toFixed(2)), 0),
   },
 };
 

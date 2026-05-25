@@ -14,7 +14,7 @@ const PLATFORM_CONFIG = {
     }),
     calcEngagement: ({ likes, views }) => {
       if (views === 0) return 0;
-      return Math.min(parseFloat(((likes / views) * 100).toFixed(2)), 100);
+      return Math.max(parseFloat(((likes / views) * 100).toFixed(2)), 0);
     },
   },
   tiktok: {
@@ -27,7 +27,7 @@ const PLATFORM_CONFIG = {
     }),
     calcEngagement: ({ likes, comments, favorites, shares, views }) => {
       if (views === 0) return 0;
-      return Math.min(parseFloat((((likes + comments + favorites + shares) / views) * 100).toFixed(2)), 100);
+      return Math.max(parseFloat((((likes + comments + favorites + shares) / views) * 100).toFixed(2)), 0);
     },
   },
   twitch: {
@@ -40,7 +40,7 @@ const PLATFORM_CONFIG = {
     }),
     calcEngagement: ({ subscribersTwitch, followers }) => {
       if (followers === 0) return 0;
-      return Math.min(parseFloat(((subscribersTwitch / followers) * 100).toFixed(2)), 100);
+      return Math.max(parseFloat(((subscribersTwitch / followers) * 100).toFixed(2)), 0);
     },
   },
   instagram: {
@@ -53,7 +53,7 @@ const PLATFORM_CONFIG = {
     }),
     calcEngagement: ({ likes, favorites, views }) => {
       if (views === 0) return 0;
-      return Math.min(parseFloat((((likes + favorites) / views) * 100).toFixed(2)), 100);
+      return Math.max(parseFloat((((likes + favorites) / views) * 100).toFixed(2)), 0);
     },
   },
 };
@@ -233,6 +233,54 @@ export const getMetrics = async (req, res) => {
     return res.status(200).json({ success: true, metrics: flat });
   } catch (error) {
     console.error('Error al obtener metricas:', error);
+    return res.status(500).json({ success: false, message: 'Error interno', error: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  GET /api/metrics/staleness
+//  Devuelve los perfiles del usuario que llevan más de 7 días sin
+//  registrar métricas (o que nunca han tenido ningún registro).
+// ─────────────────────────────────────────────────────────────────────────────
+export const getStaleness = async (req, res) => {
+  try {
+    const STALE_DAYS = 7;
+    const threshold  = new Date();
+    threshold.setDate(threshold.getDate() - STALE_DAYS);
+
+    const profiles = await prisma.socialProfile.findMany({
+      where: { userId: req.user.id },
+      select: {
+        id: true, platform: true, username: true,
+        metrics: {
+          orderBy: { weekDate: 'desc' },
+          take: 1,
+          select: { weekDate: true },
+        },
+      },
+    });
+
+    const stale = profiles
+      .map((p) => {
+        const lastDate = p.metrics[0]?.weekDate ?? null;
+        const daysAgo  = lastDate
+          ? Math.floor((Date.now() - new Date(lastDate).getTime()) / 86_400_000)
+          : null;
+        return {
+          id:       p.id,
+          platform: p.platform,
+          username: p.username,
+          lastDate: lastDate ? new Date(lastDate).toISOString().split('T')[0] : null,
+          daysAgo,
+          // stale si nunca ha tenido datos O si el último es > 7 días
+          stale: lastDate === null || new Date(lastDate) < threshold,
+        };
+      })
+      .filter((p) => p.stale);
+
+    return res.status(200).json({ success: true, stale });
+  } catch (error) {
+    console.error('getStaleness:', error);
     return res.status(500).json({ success: false, message: 'Error interno', error: error.message });
   }
 };
