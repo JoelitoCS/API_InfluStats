@@ -26,11 +26,16 @@ router.get('/profiles',               getAllProfiles);
 router.delete('/profiles/:profileId', deleteProfile);
 
 // ── Métricas ──────────────────────────────────────────────────────────────────
-// IMPORTANTE: la ruta estática /metrics/profile/:profileId/all debe ir
-// ANTES de /metrics/:metricsId para que Express no confunda "profile" con un ID.
-router.get('/metrics/:profileId',                getMetricsByProfile);
-router.put('/metrics/:metricsId',                updateMetric);
-router.delete('/metrics/:metricsId',             deleteMetric);
-router.delete('/metrics/profile/:profileId/all', deleteAllMetricsByProfile);
+// ORDEN CRÍTICO: las rutas estáticas y con prefijo distinto van SIEMPRE antes
+// de las dinámicas (:id), o Express las intercepta como si fueran un ID.
+
+// Borrar TODAS las métricas de un perfil — prefijo /all-metrics/ para evitar
+// colisión con DELETE /metrics/:metricsId
+router.delete('/all-metrics/:profileId', deleteAllMetricsByProfile);
+
+// Operaciones sobre un registro concreto
+router.get('/metrics/:profileId',    getMetricsByProfile);
+router.put('/metrics/:metricsId',    updateMetric);
+router.delete('/metrics/:metricsId', deleteMetric);
 
 export default router;

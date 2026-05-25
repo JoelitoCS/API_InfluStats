@@ -225,7 +225,9 @@ export const getMetrics = async (req, res) => {
     const flat = metrics.map((row) => {
       const detail = row[platform] || {};
       const { youtube, tiktok, twitch, instagram, ...base } = row;
-      return { ...base, ...detail };
+      // Preservar siempre el id del registro base (metricsHistory).
+      const { id: _detailId, metricsId: _metricsId, ...detailFields } = detail;
+      return { ...base, ...detailFields };
     });
 
     return res.status(200).json({ success: true, metrics: flat });

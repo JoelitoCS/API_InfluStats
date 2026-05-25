@@ -118,7 +118,10 @@ export const getMetricsByProfile = async (req, res) => {
     const flat = metrics.map((row) => {
       const detail = row[platform] || {};
       const { youtube, tiktok, twitch, instagram, ...base } = row;
-      return { ...base, ...detail };
+      // El id del base (metricsHistory) debe mantenerse siempre.
+      // Excluimos el id del detalle para que no sobreescriba el id base.
+      const { id: _detailId, metricsId: _metricsId, ...detailFields } = detail;
+      return { ...base, ...detailFields };
     });
 
     return res.status(200).json({ success: true, profile, metrics: flat });
