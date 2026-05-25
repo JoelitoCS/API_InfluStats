@@ -390,16 +390,30 @@ export const compareMetrics = async (req, res) => {
       referenceDate.setDate(referenceDate.getDate() - days);
     }
 
-    // El registro anterior es el más reciente cuya weekDate <= referenceDate
-    // y que no sea el propio current (weekDate < currentDate).
-    const previousRow = await prisma.metricsHistory.findFirst({
-      where: {
-        profileId,
-        weekDate: { lte: referenceDate },
-      },
-      orderBy: { weekDate: 'desc' },
-      include: includeDetail,
-    });
+    // El registro anterior es el más cercano a referenceDate (en cualquier dirección),
+    // excluyendo el propio current. Se buscan el más cercano por debajo y por encima
+    // y se elige el que tenga menor distancia en días.
+    const [beforeRow, afterRow] = await Promise.all([
+      prisma.metricsHistory.findFirst({
+        where:   { profileId, weekDate: { lte: referenceDate }, id: { not: currentRow.id } },
+        orderBy: { weekDate: 'desc' },
+        include: includeDetail,
+      }),
+      prisma.metricsHistory.findFirst({
+        where:   { profileId, weekDate: { gt: referenceDate }, id: { not: currentRow.id } },
+        orderBy: { weekDate: 'asc' },
+        include: includeDetail,
+      }),
+    ]);
+
+    let previousRow = null;
+    if (beforeRow && afterRow) {
+      const distBefore = Math.abs(new Date(beforeRow.weekDate) - referenceDate);
+      const distAfter  = Math.abs(new Date(afterRow.weekDate)  - referenceDate);
+      previousRow = distBefore <= distAfter ? beforeRow : afterRow;
+    } else {
+      previousRow = beforeRow || afterRow || null;
+    }
 
     // ── Aplanador: base + detalle → objeto JS plano con numbers ─────────────
     const flatten = (row) => {

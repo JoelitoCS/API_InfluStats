@@ -45,18 +45,20 @@ export const createProfile = async (req, res) => {
             });
         }
 
-        // Evita duplicados por plataforma dentro del mismo usuario.
+        // Evita duplicados por username+plataforma dentro del mismo usuario.
+        // El mismo username en plataformas distintas SÍ está permitido.
         const existingProfile = await prisma.socialProfile.findFirst({
             where: {
-                userId: req.user.id,
-                platform: normalizedPlatform
+                userId:   req.user.id,
+                platform: normalizedPlatform,
+                username: String(name).trim(),
             }
         });
 
         if (existingProfile) {
             return res.status(409).json({
                 success: false,
-                message: 'Ya existe un perfil para esta plataforma'
+                message: `Ya tienes un perfil llamado "${String(name).trim()}" en ${normalizedPlatform}`,
             });
         }
 
@@ -139,27 +141,38 @@ export const updateProfile = async (req, res) => {
     }
 
     // Construimos solo los campos que llegan en el body.
-    // Así podemos hacer actualizaciones parciales (solo URL, por ejemplo).
     const dataToUpdate = {};
     if (name)     dataToUpdate.username = String(name).trim();
     if (url)      dataToUpdate.url      = String(url).trim();
     if (platform) {
       const normalizedPlatform = normalizePlatform(platform);
-      // Reutilizamos la misma validación de plataformas que en create
       if (!VALID_PLATFORMS.includes(normalizedPlatform)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Plataforma no válida',
-        });
+        return res.status(400).json({ success: false, message: 'Plataforma no válida' });
       }
       dataToUpdate.platform = normalizedPlatform;
     }
 
     // Validamos la URL si viene en el body
     if (url && !isValidUrl(url)) {
-      return res.status(400).json({
+      return res.status(400).json({ success: false, message: 'La URL debe ser real y empezar por http:// o https://' });
+    }
+
+    // Comprobar duplicado username+platform si se cambia alguno de los dos.
+    // Excluimos el propio perfil que se está editando (id !== existing.id).
+    const finalUsername = dataToUpdate.username ?? existing.username;
+    const finalPlatform = dataToUpdate.platform ?? existing.platform;
+    const duplicate = await prisma.socialProfile.findFirst({
+      where: {
+        userId:   req.user.id,
+        username: finalUsername,
+        platform: finalPlatform,
+        id:       { not: existing.id },
+      },
+    });
+    if (duplicate) {
+      return res.status(409).json({
         success: false,
-        message: 'La URL debe ser real y empezar por http:// o https://',
+        message: `Ya tienes un perfil llamado "${finalUsername}" en ${finalPlatform}`,
       });
     }
 
