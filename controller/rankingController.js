@@ -1,26 +1,27 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  controller/rankingController.js — Ranking público y comparativa entre perfiles
+//
+//  Funciones exportadas:
+//    getRanking      → GET /api/ranking?platform=X&sort=Y
+//    compareProfiles → GET /api/ranking/compare?profileA=uuid&profileB=uuid
+//
+//  Por qué es "público":
+//    Cualquier usuario autenticado puede ver los rankings de TODOS los perfiles,
+//    no solo los suyos. Es una funcionalidad social: los influencers se comparan
+//    entre sí. La autenticación sigue siendo obligatoria (no es abierto al público).
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { prisma } from '../lib/prisma.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  GET /api/ranking?platform=instagram&sort=followers
-//
-//  Devuelve el ranking público de todos los perfiles registrados de una plataforma.
-//  Solo aparecen perfiles que tengan al menos UN registro de métricas.
-//  La autenticación es obligatoria (protect) — solo usuarios registrados pueden ver el ranking.
-//
-//  Query params:
-//    platform  : "instagram" | "youtube" | "tiktok" | "twitch"  (requerido)
-//    sort      : "followers" | "engagement" | "growth" | "views" (default: followers)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Campo de seguidores/suscriptores por plataforma (para el sort y el display)
+// Campo de seguidores/suscriptores por plataforma (para ordenar y mostrar en ranking)
 const FOLLOWER_FIELD = {
   instagram: 'followers',
   tiktok:    'followers',
   twitch:    'followers',
-  youtube:   'subscribers',
+  youtube:   'subscribers', // YouTube usa "suscriptores" en vez de "seguidores"
 };
 
-// Relación Prisma de la tabla detalle por plataforma
+// Nombre de la relación Prisma con la tabla de detalle de cada plataforma
 const DETAIL_RELATION = {
   instagram: 'instagram',
   tiktok:    'tiktok',
@@ -28,12 +29,18 @@ const DETAIL_RELATION = {
   youtube:   'youtube',
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  getRanking — GET /api/ranking?platform=instagram&sort=followers
+//
+//  Devuelve todos los perfiles de una plataforma que tienen al menos un
+//  registro de métricas, ordenados según el criterio pedido.
+// ─────────────────────────────────────────────────────────────────────────────
 export const getRanking = async (req, res) => {
   try {
     const platform = req.query.platform?.toLowerCase();
-    const sort     = req.query.sort || 'followers';
+    const sort     = req.query.sort || 'followers'; // Criterio de ordenación por defecto
 
-    // Validaciones básicas
+    // Validar que la plataforma sea una de las 4 soportadas
     if (!platform || !FOLLOWER_FIELD[platform]) {
       return res.status(400).json({
         success: false,
@@ -49,78 +56,70 @@ export const getRanking = async (req, res) => {
       });
     }
 
-    // Incluir solo la tabla detalle de la plataforma activa
+    // Incluir solo la tabla de detalle de la plataforma activa
+    // (incluir las 4 siempre sería innecesario y más lento)
     const detailInclude = {};
     detailInclude[DETAIL_RELATION[platform]] = true;
 
-    // Obtener todos los perfiles de la plataforma con su última métrica
+    // Traer todos los perfiles de esa plataforma con su última métrica
     const profiles = await prisma.socialProfile.findMany({
-      where: { platform: { equals: platform, mode: 'insensitive' } },
+      where:  { platform: { equals: platform, mode: 'insensitive' } }, // Case-insensitive
       select: {
-        id:       true,
-        username: true,
-        url:      true,
-        platform: true,
-        user: {
-          select: { name: true, email: true },
-        },
+        id: true, username: true, url: true, platform: true,
+        user: { select: { name: true, email: true } },
         metrics: {
           orderBy: { weekDate: 'desc' },
-          take: 1,
+          take:    1,              // Solo el último registro de cada perfil
           include: detailInclude,
         },
       },
     });
 
-    // Filtrar solo los que tienen al menos una semana de datos
+    // Filtrar: solo los que tienen al menos un registro de métricas
     const withData = profiles.filter((p) => p.metrics.length > 0);
 
-    // Construir filas del ranking aplanando el detalle
+    // Construir cada fila del ranking aplanando base + detalle
     const rows = withData.map((profile) => {
       const lastMetric = profile.metrics[0];
       const detail     = lastMetric[DETAIL_RELATION[platform]] || {};
       const fField     = FOLLOWER_FIELD[platform];
 
       return {
-        profileId:  profile.id,
-        username:   profile.username,
-        url:        profile.url,
-        platform:   profile.platform,
-        // Nombre del usuario (puede ser null si no lo rellenó)
-        displayName: profile.user?.name || profile.username,
-        // Semana del último registro
-        weekDate:   lastMetric.weekDate,
-        // Métricas clave
-        followers:  Number(detail[fField] ?? 0),
-        views:      Number(detail.views   ?? 0),
-        engagement: parseFloat(Number(lastMetric.engagement ?? 0).toFixed(2)),
-        growth:     lastMetric.growth !== null && lastMetric.growth !== undefined
+        profileId:   profile.id,
+        username:    profile.username,
+        url:         profile.url,
+        platform:    profile.platform,
+        displayName: profile.user?.name || profile.username, // Nombre real o username
+        weekDate:    lastMetric.weekDate,
+        followers:   Number(detail[fField] ?? 0),            // Seguidores o suscriptores
+        views:       Number(detail.views   ?? 0),
+        engagement:  parseFloat(Number(lastMetric.engagement ?? 0).toFixed(2)),
+        growth:      lastMetric.growth !== null && lastMetric.growth !== undefined
           ? parseFloat(Number(lastMetric.growth).toFixed(2))
-          : null,
+          : null,                                            // null en la primera semana
       };
     });
 
-    // Ordenar según el criterio pedido
+    // Ordenar según el criterio: mayor primero para todos excepto growth (null al final)
     rows.sort((a, b) => {
       if (sort === 'growth') {
-        // Los null (primera semana) van al final
-        if (a.growth === null) return 1;
+        if (a.growth === null) return 1;  // null va al final
         if (b.growth === null) return -1;
         return b.growth - a.growth;
       }
       return b[sort] - a[sort]; // followers, engagement, views: mayor primero
     });
 
-    // Añadir posición (1-indexed)
+    // Añadir posición (1-indexed): el primero recibe position: 1
     const ranked = rows.map((row, i) => ({ position: i + 1, ...row }));
 
     return res.status(200).json({
       success:  true,
-      platform,
-      sort,
+      platform, sort,
       total:    ranked.length,
       ranking:  ranked,
     });
+
   } catch (error) {
     console.error('Error al obtener ranking:', error);
     return res.status(500).json({ success: false, message: 'Error interno', error: error.message });
@@ -128,11 +127,15 @@ export const getRanking = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  GET /api/ranking/compare?profileA=uuid&profileB=uuid
+//  compareProfiles — GET /api/ranking/compare?profileA=uuid&profileB=uuid
 //
 //  Compara las últimas métricas de dos perfiles públicos.
-//  Ambos perfiles deben ser de la misma plataforma.
-//  Devuelve los datos de ambos y las diferencias absolutas y porcentuales.
+//  Ambos deben ser de la misma plataforma.
+//
+//  Resultado:
+//    - Datos completos de cada perfil (último registro)
+//    - diff: diferencias absolutas y porcentuales campo a campo
+//    - score: cuántos campos gana cada perfil (A, B o empate)
 // ─────────────────────────────────────────────────────────────────────────────
 export const compareProfiles = async (req, res) => {
   try {
@@ -145,13 +148,13 @@ export const compareProfiles = async (req, res) => {
       return res.status(400).json({ success: false, message: 'profileA y profileB deben ser distintos' });
     }
 
-    // Obtener ambos perfiles con su última métrica
+    // Traer ambos perfiles en paralelo (Promise.all = más rápido que en serie)
     const [pA, pB] = await Promise.all([
       prisma.socialProfile.findUnique({
         where:  { id: profileA },
         select: {
           id: true, username: true, platform: true, url: true,
-          user: { select: { name: true } },
+          user:    { select: { name: true } },
           metrics: {
             orderBy: { weekDate: 'desc' },
             take:    1,
@@ -163,7 +166,7 @@ export const compareProfiles = async (req, res) => {
         where:  { id: profileB },
         select: {
           id: true, username: true, platform: true, url: true,
-          user: { select: { name: true } },
+          user:    { select: { name: true } },
           metrics: {
             orderBy: { weekDate: 'desc' },
             take:    1,
@@ -179,6 +182,7 @@ export const compareProfiles = async (req, res) => {
     const platA = pA.platform?.toLowerCase();
     const platB = pB.platform?.toLowerCase();
 
+    // Solo se pueden comparar perfiles de la misma plataforma
     if (platA !== platB) {
       return res.status(400).json({
         success: false,
@@ -189,7 +193,7 @@ export const compareProfiles = async (req, res) => {
     if (!pA.metrics.length) return res.status(404).json({ success: false, message: 'profileA no tiene métricas' });
     if (!pB.metrics.length) return res.status(404).json({ success: false, message: 'profileB no tiene métricas' });
 
-    // Aplanar métrica base + detalle
+    // Aplanar base + detalle en objeto plano con numbers (Decimal de Prisma → number JS)
     const flatten = (metric, platform) => {
       const detail = metric[platform] || {};
       const { youtube, tiktok, twitch, instagram, ...base } = metric;
@@ -211,7 +215,7 @@ export const compareProfiles = async (req, res) => {
     const metA     = flatten(pA.metrics[0], platform);
     const metB     = flatten(pB.metrics[0], platform);
 
-    // Campos numéricos a comparar
+    // Campos a comparar según la plataforma
     const NUMERIC_FIELDS = {
       youtube:   ['views', 'likes', 'subscribers', 'paidMembers', 'donations', 'engagement', 'growth'],
       tiktok:    ['views', 'likes', 'comments', 'favorites', 'shares', 'followers', 'engagement', 'growth'],
@@ -220,7 +224,7 @@ export const compareProfiles = async (req, res) => {
     };
     const fields = NUMERIC_FIELDS[platform] || [];
 
-    // Calcular diferencias A - B
+    // Calcular diferencias A - B para cada campo
     const diff = {};
     for (const field of fields) {
       const vA = metA[field] !== undefined && metA[field] !== null ? parseFloat(metA[field]) : null;
@@ -232,41 +236,24 @@ export const compareProfiles = async (req, res) => {
       const absolute = parseFloat((vA - vB).toFixed(2));
       const percent  = vB !== 0 ? parseFloat(((absolute / Math.abs(vB)) * 100).toFixed(2)) : null;
       diff[field] = {
-        absolute,
-        percent,
+        absolute, percent,
         winner: absolute > 0 ? 'A' : absolute < 0 ? 'B' : 'tie',
       };
     }
 
-    // Marcador global: cuántos campos gana cada uno
+    // Marcador global: cuántos campos gana cada perfil
     const score = { A: 0, B: 0, tie: 0 };
     Object.values(diff).forEach(({ winner }) => {
       if (winner) score[winner]++;
     });
 
     return res.status(200).json({
-      success: true,
-      platform,
-      profileA: {
-        id:       pA.id,
-        username: pA.username,
-        url:      pA.url,
-        name:     pA.user?.name || pA.username,
-        weekDate: metA.weekDate,
-        metrics:  metA,
-      },
-      profileB: {
-        id:       pB.id,
-        username: pB.username,
-        url:      pB.url,
-        name:     pB.user?.name || pB.username,
-        weekDate: metB.weekDate,
-        metrics:  metB,
-      },
-      diff,
-      fields,
-      score,
+      success: true, platform,
+      profileA: { id: pA.id, username: pA.username, url: pA.url, name: pA.user?.name || pA.username, weekDate: metA.weekDate, metrics: metA },
+      profileB: { id: pB.id, username: pB.username, url: pB.url, name: pB.user?.name || pB.username, weekDate: metB.weekDate, metrics: metB },
+      diff, fields, score,
     });
+
   } catch (error) {
     console.error('compareProfiles:', error);
     return res.status(500).json({ success: false, message: 'Error interno', error: error.message });

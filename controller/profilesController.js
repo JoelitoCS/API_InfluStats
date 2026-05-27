@@ -1,124 +1,150 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  controller/profilesController.js — CRUD de perfiles sociales
+//
+//  Funciones exportadas:
+//    createProfile → POST /api/profiles
+//    getProfiles   → GET  /api/profiles
+//    updateProfile → PUT  /api/profiles/:id
+//
+//  Todas requieren autenticación (middleware protect antes de llegar aquí).
+//  El userId del usuario autenticado se lee de req.user.id (puesto por protect).
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { prisma } from '../lib/prisma.js';
 
-// Plataformas validas segun el CHECK real de Supabase: youtube, tiktok, instagram y twitch.
+// Plataformas válidas según el CHECK de la tabla social_profiles en Supabase.
+// Cambiar aquí si se añade una nueva plataforma (y actualizar el schema de Prisma).
 const VALID_PLATFORMS = ['youtube', 'tiktok', 'instagram', 'twitch'];
 
-// Comprueba que la URL sea http o https y tenga hostname real.
+// ── isValidUrl ────────────────────────────────────────────────────────────────
+// Usa el constructor nativo URL() para validar la URL.
+// Si el string no es una URL válida, new URL() lanza una excepción → return false.
+// También exige que el protocolo sea http o https (no acepta ftp://, etc.).
 const isValidUrl = (value) => {
-    try {
-        const parsedUrl = new URL(value);
-        return ['http:', 'https:'].includes(parsedUrl.protocol) && Boolean(parsedUrl.hostname);
-    } catch {
-        return false;
-    }
+  try {
+    const parsedUrl = new URL(value);
+    return ['http:', 'https:'].includes(parsedUrl.protocol) && Boolean(parsedUrl.hostname);
+  } catch {
+    return false;
+  }
 };
 
-// Normaliza la plataforma al formato que acepta la tabla: texto en minusculas.
+// ── normalizePlatform ─────────────────────────────────────────────────────────
+// Convierte "INSTAGRAM", "Instagram", etc. a "instagram".
+// Así el usuario puede enviar la plataforma en cualquier capitalización.
 const normalizePlatform = (platform) => {
-    return String(platform || '').trim().toLowerCase();
+  return String(platform || '').trim().toLowerCase();
 };
 
-// Crea un perfil social para el usuario autenticado.
+// ── createProfile ─────────────────────────────────────────────────────────────
+// Crea un nuevo perfil social asociado al usuario autenticado.
+// Un usuario puede tener varios perfiles PERO no dos con el mismo username + plataforma.
 export const createProfile = async (req, res) => {
-    try {
-        const { name, url, platform } = req.body;
-        const normalizedPlatform = normalizePlatform(platform);
+  try {
+    const { name, url, platform } = req.body;
+    const normalizedPlatform = normalizePlatform(platform);
 
-        if (!name || !url || !platform) {
-            return res.status(400).json({
-                success: false,
-                message: 'Nombre, URL y plataforma son obligatorios'
-            });
-        }
-
-        if (!VALID_PLATFORMS.includes(normalizedPlatform)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Plataforma no valida'
-            });
-        }
-
-        if (!isValidUrl(url)) {
-            return res.status(400).json({
-                success: false,
-                message: 'La URL debe ser real y empezar por http:// o https://'
-            });
-        }
-
-        // Evita duplicados por username+plataforma dentro del mismo usuario.
-        // El mismo username en plataformas distintas SÍ está permitido.
-        const existingProfile = await prisma.socialProfile.findFirst({
-            where: {
-                userId:   req.user.id,
-                platform: normalizedPlatform,
-                username: String(name).trim(),
-            }
-        });
-
-        if (existingProfile) {
-            return res.status(409).json({
-                success: false,
-                message: `Ya tienes un perfil llamado "${String(name).trim()}" en ${normalizedPlatform}`,
-            });
-        }
-
-        const profile = await prisma.socialProfile.create({
-            data: {
-                username: String(name).trim(),
-                url: String(url).trim(),
-                platform: normalizedPlatform,
-                userId: req.user.id
-            }
-        });
-
-        return res.status(201).json({
-            success: true,
-            message: 'Perfil social creado correctamente',
-            profile
-        });
-    } catch (error) {
-        console.error('Error al crear perfil social:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Error al crear perfil social',
-            error: error.message
-        });
+    // Validar presencia de todos los campos obligatorios
+    if (!name || !url || !platform) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nombre, URL y plataforma son obligatorios'
+      });
     }
+
+    // Validar que la plataforma sea una de las 4 permitidas
+    if (!VALID_PLATFORMS.includes(normalizedPlatform)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Plataforma no valida'
+      });
+    }
+
+    // Validar que la URL sea real (no solo un texto cualquiera)
+    if (!isValidUrl(url)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La URL debe ser real y empezar por http:// o https://'
+      });
+    }
+
+    // Comprobar duplicado: mismo username + misma plataforma para este usuario.
+    // El mismo nombre en plataformas distintas SÍ está permitido.
+    const existingProfile = await prisma.socialProfile.findFirst({
+      where: {
+        userId:   req.user.id,           // Solo buscamos entre los perfiles del usuario
+        platform: normalizedPlatform,
+        username: String(name).trim(),
+      }
+    });
+
+    if (existingProfile) {
+      return res.status(409).json({                  // 409 Conflict
+        success: false,
+        message: `Ya tienes un perfil llamado "${String(name).trim()}" en ${normalizedPlatform}`,
+      });
+    }
+
+    // Crear el perfil en la BD
+    const profile = await prisma.socialProfile.create({
+      data: {
+        username: String(name).trim(),
+        url:      String(url).trim(),
+        platform: normalizedPlatform,
+        userId:   req.user.id            // FK a la tabla users
+      }
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Perfil social creado correctamente',
+      profile
+    });
+
+  } catch (error) {
+    console.error('Error al crear perfil social:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al crear perfil social',
+      error:   error.message
+    });
+  }
 };
 
+// ── getProfiles ───────────────────────────────────────────────────────────────
+// Devuelve todos los perfiles del usuario autenticado, ordenados por fecha desc.
+// Cada usuario solo ve sus propios perfiles (filtramos por req.user.id).
 export const getProfiles = async (req, res) => {
   try {
-    // Filtramos estrictamente por el id del usuario que lleva el JWT,
-    // así cada usuario solo ve sus propios perfiles.
     const profiles = await prisma.socialProfile.findMany({
-      where: { userId: req.user.id },
-      orderBy: { createdAt: 'desc' }, // más nuevo primero
+      where:   { userId: req.user.id },    // Solo los perfiles de este usuario
+      orderBy: { createdAt: 'desc' },      // El más nuevo primero
     });
 
     return res.status(200).json({
-      success: true,
-      profiles, // array vacío [] si el usuario no tiene perfiles aún
+      success:  true,
+      profiles,                            // Array vacío [] si no tiene perfiles
     });
+
   } catch (error) {
     console.error('Error al obtener perfiles:', error);
     return res.status(500).json({
       success: false,
       message: 'Error al obtener perfiles',
-      error: error.message,
+      error:   error.message,
     });
   }
 };
 
-
-// Solo puede editarlo el usuario propietario (validado en el
-// middleware protect + comprobación de userId aquí abajo).
-
+// ── updateProfile ─────────────────────────────────────────────────────────────
+// Actualización parcial: solo se actualizan los campos que llegan en el body.
+// El middleware validateOwnership ya comprobó la propiedad antes de llegar aquí.
 export const updateProfile = async (req, res) => {
   try {
-    const { id } = req.params; // id del perfil a editar
+    const { id } = req.params;              // UUID del perfil a editar
     const { name, url, platform } = req.body;
 
-    // Comprobamos que se envía al menos un campo con datos
+    // Exigir al menos un campo en el body
     if (!name && !url && !platform) {
       return res.status(400).json({
         success: false,
@@ -126,21 +152,15 @@ export const updateProfile = async (req, res) => {
       });
     }
 
-    // Verificamos que el perfil existe Y pertenece al usuario del JWT.
-    // Si no lo encontramos así, devolvemos 404 (no revelamos si existe
-    // pero es de otro usuario, por seguridad).
+    // Re-verificar propiedad (defensa en profundidad, aunque validateOwnership ya lo hizo)
     const existing = await prisma.socialProfile.findFirst({
       where: { id, userId: req.user.id },
     });
-
     if (!existing) {
-      return res.status(404).json({
-        success: false,
-        message: 'Perfil no encontrado',
-      });
+      return res.status(404).json({ success: false, message: 'Perfil no encontrado' });
     }
 
-    // Construimos solo los campos que llegan en el body.
+    // Construir objeto con solo los campos recibidos (actualización parcial)
     const dataToUpdate = {};
     if (name)     dataToUpdate.username = String(name).trim();
     if (url)      dataToUpdate.url      = String(url).trim();
@@ -152,13 +172,16 @@ export const updateProfile = async (req, res) => {
       dataToUpdate.platform = normalizedPlatform;
     }
 
-    // Validamos la URL si viene en el body
+    // Validar URL solo si viene en el body
     if (url && !isValidUrl(url)) {
-      return res.status(400).json({ success: false, message: 'La URL debe ser real y empezar por http:// o https://' });
+      return res.status(400).json({
+        success: false,
+        message: 'La URL debe ser real y empezar por http:// o https://',
+      });
     }
 
-    // Comprobar duplicado username+platform si se cambia alguno de los dos.
-    // Excluimos el propio perfil que se está editando (id !== existing.id).
+    // Comprobar que el nuevo username+platform no duplique otro perfil existente.
+    // Usamos los valores finales (nuevo si llega en body, actual si no).
     const finalUsername = dataToUpdate.username ?? existing.username;
     const finalPlatform = dataToUpdate.platform ?? existing.platform;
     const duplicate = await prisma.socialProfile.findFirst({
@@ -166,7 +189,7 @@ export const updateProfile = async (req, res) => {
         userId:   req.user.id,
         username: finalUsername,
         platform: finalPlatform,
-        id:       { not: existing.id },
+        id:       { not: existing.id },   // Excluir el propio perfil que se edita
       },
     });
     if (duplicate) {
@@ -176,10 +199,10 @@ export const updateProfile = async (req, res) => {
       });
     }
 
-    // Ejecutamos el UPDATE en PostgreSQL via Prisma
+    // Ejecutar el UPDATE en PostgreSQL
     const updated = await prisma.socialProfile.update({
       where: { id },
-      data: dataToUpdate,
+      data:  dataToUpdate,
     });
 
     return res.status(200).json({
@@ -187,12 +210,13 @@ export const updateProfile = async (req, res) => {
       message: 'Perfil actualizado correctamente',
       profile: updated,
     });
+
   } catch (error) {
     console.error('Error al actualizar perfil:', error);
     return res.status(500).json({
       success: false,
       message: 'Error al actualizar perfil',
-      error: error.message,
+      error:   error.message,
     });
   }
 };
