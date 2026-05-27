@@ -20,6 +20,7 @@ import profileRoutes from './routes/profiles.js';
 import metricsRoutes from './routes/metrics.js';
 import rankingRoutes from './routes/ranking.js';
 import adminRoutes   from './routes/admin.js';
+import { sanitizeInput } from './middleware/sanitizeMiddleware.js';
 
 // prisma: instancia única del cliente de base de datos (ver lib/prisma.js)
 import { prisma }    from './lib/prisma.js';
@@ -42,6 +43,7 @@ app.use(cors());
 // express.json(): analiza el body de las peticiones POST/PUT que lleguen
 // con Content-Type: application/json y lo pone disponible en req.body.
 app.use(express.json());
+app.use(sanitizeInput);
 
 // express.static('public'): sirve archivos estáticos (HTML, JS, CSS) de la
 // carpeta /public. Útil para el formulario de prueba en desarrollo.
