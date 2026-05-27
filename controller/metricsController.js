@@ -181,26 +181,30 @@ export const createMetrics = async (req, res) => {
       }
     }
 
-    // 5. Transacción: base + detalle se insertan juntos o no se inserta nada
-    const result = await prisma.$transaction(async (tx) => {
-      const base = await tx.metricsHistory.create({
-        data: { profileId, weekDate: parsedDate, engagement, growth },
-      });
-
-      let detail;
-      const detailData = { metricsId: base.id, ...config.buildDetail(parsedFields) };
-
-      // Switch explícito: Prisma 7 + driver-adapter no acepta acceso dinámico al modelo
-      switch (platform) {
-        case 'youtube':   detail = await tx.metricsYoutube.create({ data: detailData });   break;
-        case 'tiktok':    detail = await tx.metricsTiktok.create({ data: detailData });    break;
-        case 'twitch':    detail = await tx.metricsTwitch.create({ data: detailData });    break;
-        case 'instagram': detail = await tx.metricsInstagram.create({ data: detailData }); break;
-        default: throw new Error(`Plataforma no soportada en transaccion: ${platform}`);
-      }
-
-      return { base, detail };
+    // 5. Insertar base + detalle de forma secuencial (compatible con PgBouncer)
+    // PgBouncer en modo transaction pooling no soporta prisma.$transaction interactivo.
+    // Insertamos la fila base primero y, si falla el detalle, la borramos (rollback manual).
+    const base = await prisma.metricsHistory.create({
+      data: { profileId, weekDate: parsedDate, engagement, growth },
     });
+
+    let detail;
+    try {
+      const detailData = { metricsId: base.id, ...config.buildDetail(parsedFields) };
+      switch (platform) {
+        case 'youtube':   detail = await prisma.metricsYoutube.create({ data: detailData });   break;
+        case 'tiktok':    detail = await prisma.metricsTiktok.create({ data: detailData });    break;
+        case 'twitch':    detail = await prisma.metricsTwitch.create({ data: detailData });    break;
+        case 'instagram': detail = await prisma.metricsInstagram.create({ data: detailData }); break;
+        default: throw new Error(`Plataforma no soportada: ${platform}`);
+      }
+    } catch (detailError) {
+      // Rollback manual: eliminar la fila base si el detalle falla
+      await prisma.metricsHistory.delete({ where: { id: base.id } }).catch(() => {});
+      throw detailError;
+    }
+
+    const result = { base, detail };
 
     return res.status(201).json({
       success: true,
