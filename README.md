@@ -61,6 +61,14 @@ PORT=3001                      # Opcional, por defecto 3001
 
 ---
 
+## Usuarios y credenciales
+
+La mayoria utilizan de contraseña Demo1234!, menos joelcanosan@gmail.com y ivangarciac10@gmail.com.
+
+`Admin` | admin@admin.com ----- Admin123 |
+`Algunos mails con contraseña Demo1234! ` | techguru@demo.com, gamedreamer@demo.com,fitlifepro@demo.com,foodiequeen@demo.com, travelblogger@demo.com, codervibes@demo.com, beautyglam@demo.com, musicmaker@demo.com, gamingking@demo.com  |
+
+
 ## 4. Arquitectura
 
 ```
