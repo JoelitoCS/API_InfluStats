@@ -1,4 +1,4 @@
-// Configuracion de Prisma CLI para localizar schema, migraciones y datasource.
+// Configuracion de Prisma CLI — Prisma 7
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
@@ -8,6 +8,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // DIRECT_URL = conexión directa puerto 5432 (sin pgbouncer)
+    // Necesaria para db push / migrate / studio
+    url: process.env["DIRECT_URL"],
   },
 });
