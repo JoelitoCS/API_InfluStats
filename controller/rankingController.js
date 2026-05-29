@@ -66,7 +66,7 @@ export const getRanking = async (req, res) => {
       where:  { platform: { equals: platform, mode: 'insensitive' } }, // Case-insensitive
       select: {
         id: true, username: true, url: true, platform: true,
-        user: { select: { name: true, email: true } },
+        user: { select: { name: true, email: true, userProfile: { select: { avatarUrl: true, username: true } } } },
         metrics: {
           orderBy: { weekDate: 'desc' },
           take:    1,              // Solo el último registro de cada perfil
@@ -85,11 +85,13 @@ export const getRanking = async (req, res) => {
       const fField     = FOLLOWER_FIELD[platform];
 
       return {
-        profileId:   profile.id,
-        username:    profile.username,
-        url:         profile.url,
-        platform:    profile.platform,
-        displayName: profile.user?.name || profile.username, // Nombre real o username
+        profileId:            profile.id,
+        username:             profile.username,
+        url:                  profile.url,
+        platform:             profile.platform,
+        displayName:          profile.user?.name || profile.username,
+        avatarUrl:            profile.user?.userProfile?.avatarUrl || null,
+        userProfileUsername:  profile.user?.userProfile?.username || null,
         weekDate:    lastMetric.weekDate,
         followers:   Number(detail[fField] ?? 0),            // Seguidores o suscriptores
         views:       Number(detail.views   ?? 0),
